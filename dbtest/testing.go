@@ -1,3 +1,4 @@
+// Package dbtest provides utilities to use dockertest with PostgreSQL.
 package dbtest
 
 import (
