@@ -57,7 +57,7 @@ func lock(ctx context.Context, db *sql.DB) error {
 }
 
 func makeMigrationTable(ctx context.Context, t *sql.Tx) error {
-	_, err := t.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS zyberia_migration (
+	_, err := t.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS pgutil_migration (
     version TEXT UNIQUE PRIMARY KEY,
     migrated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );`)
@@ -69,7 +69,7 @@ func makeMigrationTable(ctx context.Context, t *sql.Tx) error {
 
 func IsMigrated(ctx context.Context, tx *sql.Tx, name string) (bool, error) {
 	var c int
-	r := tx.QueryRowContext(ctx, `SELECT COUNT(version) FROM zyberia_migration WHERE version=$1`, name)
+	r := tx.QueryRowContext(ctx, `SELECT COUNT(version) FROM pgutil_migration WHERE version=$1`, name)
 	if err := r.Scan(&c); err != nil {
 		return false, err
 	}
@@ -77,7 +77,7 @@ func IsMigrated(ctx context.Context, tx *sql.Tx, name string) (bool, error) {
 }
 
 func Done(ctx context.Context, tx *sql.Tx, name string) error {
-	if _, err := tx.ExecContext(ctx, `INSERT INTO zyberia_migration (version) VALUES ($1)`, name); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO pgutil_migration (version) VALUES ($1)`, name); err != nil {
 		return err
 	}
 	return nil
