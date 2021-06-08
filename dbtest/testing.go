@@ -42,13 +42,13 @@ func dbname() string {
 	return fmt.Sprintf("%x", bs)
 }
 
-type TBDB struct {
+type TDB struct {
 	*testing.T
 	DB *sql.DB
 }
 
 // RunWithDB creates a new database for a subtest.
-func RunWithDB(t *testing.T, name string, f func(*TBDB)) {
+func RunWithDB(t *testing.T, name string, f func(*TDB)) {
 	t.Run(name, func(t *testing.T) {
 		WithDB(t, f)
 	})
@@ -61,7 +61,7 @@ func RunWithDB(t *testing.T, name string, f func(*TBDB)) {
 //            // do stuff here
 //        })
 //    }
-func WithDB(t *testing.T, f func(*TBDB)) {
+func WithDB(t *testing.T, f func(*TDB)) {
 	n := dbname()
 	t.Logf("creating database %s", n)
 	if pool == nil {
@@ -76,7 +76,7 @@ func WithDB(t *testing.T, f func(*TBDB)) {
 		pool.Purge(r)
 	}()
 
-	f(&TBDB{
+	f(&TDB{
 		T:  t,
 		DB: db,
 	})
