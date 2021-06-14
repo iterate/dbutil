@@ -1,3 +1,5 @@
+//+build withdb
+
 package dbtest_test
 
 import (

@@ -15,7 +15,7 @@ var migration = func(ctx context.Context, tx *sql.Tx) error {
     const name = "sample_migration_name"
     
     // check if this migration has been executed
-    if ok, err := pgutilIsMigrated(ctx, tx, name); err != nil {
+    if ok, err := pgutil.IsMigrated(ctx, tx, name); err != nil {
         return err
     } else if ok {
         return nil
@@ -51,7 +51,12 @@ err := pgutil.Transact(ctx, db, func(tx *sql.Tx) error {
 
 ## Testing
 
-Literally just see [dbtest](./dbtest)'s tests.
+Literally just see [`dbtest`](./dbtest)'s tests.
+
+### Running only when certain tags are present
+
+[`dbtest`](./dbtest) does this. See `main_db_test.go` and `main_nodb_test.go`, allowing the application to only run the
+dockerized tests when the `withdb` tag is present.
 
 
 ## Law
