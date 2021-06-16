@@ -1,16 +1,19 @@
-package pgutil
+//+build withdb
+
+package pgutil_test
 
 import (
 	"context"
 	"database/sql"
 	"testing"
 
+	"pkg.iterate.no/pgutil"
 	"pkg.iterate.no/pgutil/dbtest"
 )
 
-var migrationA = Migration(func(ctx context.Context, tx *sql.Tx) error {
+var migrationA = pgutil.Migration(func(ctx context.Context, tx *sql.Tx) error {
 	const name = "sample_migration_name"
-	if ok, err := IsMigrated(ctx, tx, name); err != nil {
+	if ok, err := pgutil.IsMigrated(ctx, tx, name); err != nil {
 		return err
 	} else if ok {
 		return nil
@@ -21,7 +24,7 @@ var migrationA = Migration(func(ctx context.Context, tx *sql.Tx) error {
 	}
 	return nil
 })
-var migrationB = Migration(func(ctx context.Context, tx *sql.Tx) error {
+var migrationB = pgutil.Migration(func(ctx context.Context, tx *sql.Tx) error {
 	_, err := tx.ExecContext(ctx, `ALTER TABLE test_migration ADD COLUMN name text NOT NULL DEFAULT 'John Doe'`)
 	if err != nil {
 		return err
@@ -31,7 +34,7 @@ var migrationB = Migration(func(ctx context.Context, tx *sql.Tx) error {
 
 func TestMigrate(t *testing.T) {
 	dbtest.WithDB(t, func(t *dbtest.TDB) {
-		if err := Migrate(context.Background(), t.DB, migrationA, migrationB); err != nil {
+		if err := pgutil.Migrate(context.Background(), t.DB, migrationA, migrationB); err != nil {
 			t.Errorf("could not migrate: %v", err)
 		}
 	})

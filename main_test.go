@@ -3,11 +3,10 @@ package pgutil_test
 import (
 	"os"
 	"testing"
-
-	"pkg.iterate.no/pgutil/dbtest"
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(dbtest.WithPool(m.Run))
+	r := dbWrap(m.Run)
+	os.Exit(r())
 }
 

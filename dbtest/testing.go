@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"pkg.iterate.no/pgutil"
 
 	"github.com/ory/dockertest/v3"
 )
@@ -110,19 +111,8 @@ func makeDB(t testing.TB, p *dockertest.Pool) (*sql.DB, *dockertest.Resource, er
 	ctx, ccl := context.WithTimeout(context.Background(), time.Minute*5)
 	defer ccl()
 
-	tc := time.NewTicker(time.Second * 2)
-
-	var ready bool
-	t.Logf("waiting for database to start...")
-	for !ready {
-		select {
-		case <-tc.C:
-			if err := db.PingContext(ctx); err == nil {
-				ready = true
-			}
-		case <-ctx.Done():
+	if err := pgutil.Wait(ctx, db); err != nil {
 			return nil, nil, ctx.Err()
-		}
 	}
 
 	return db, r, nil
