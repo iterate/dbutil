@@ -40,6 +40,13 @@ if err := pgutil.Migrate(ctx, db, migrations...); err != nil {
 }
 ```
 
+### No! Migrations should be plain SQL files in a directory!
+Ok. See [example_migratedir_test.go](example_migratedir_test.go).
+
+```go
+ms, err := pgutil.MigrationsInDir(fsys, "path/to/migrations")
+```
+
 ## Utilities
 
 ### Transaction

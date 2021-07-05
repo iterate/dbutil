@@ -1,9 +1,13 @@
 package pgutil
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
+	"io/fs"
+	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -82,3 +86,61 @@ func Done(ctx context.Context, tx *sql.Tx, name string) error {
 	}
 	return nil
 }
+
+func MigrationsInDir(f fs.ReadDirFS, path string) ([]Migration, error) {
+	ds, err := f.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// sort alphabetically
+	sort.Slice(ds, func(i, j int) bool {
+		return ds[i].Name() < ds[j].Name()
+	})
+
+	var files []fs.DirEntry
+	for _, f := range ds {
+		if !f.IsDir() {
+			files = append(files, f)
+		}
+	}
+
+	var ms []Migration
+
+	for _, fi := range files {
+		filename := fi.Name()
+		pathname := filepath.Join(path, filename)
+		f2, err := f.Open(pathname)
+		if err != nil {
+			return nil, fmt.Errorf("opening migration: %w", err)
+		}
+
+		// copy contents of the file to a buffer
+		var c bytes.Buffer
+		if _, err := c.ReadFrom(f2); err != nil {
+			return nil, fmt.Errorf("reading file: %w", err)
+		}
+		if err := f2.Close(); err != nil {
+			return nil, fmt.Errorf("closing file: %w", err)
+		}
+
+		ms = append(ms, func(ctx context.Context, tx *sql.Tx) error {
+			if ok, err := IsMigrated(ctx, tx, filename); err != nil {
+				return fmt.Errorf("checking migration state: %w", err)
+			} else if ok {
+				return nil
+			}
+
+			// do stuff with tx
+			if _, err := tx.ExecContext(ctx, c.String()); err != nil {
+				return err
+			}
+
+			// Flag this migration as executed
+			return Done(ctx, tx, filename)
+		})
+	}
+
+	return ms, nil
+}
+

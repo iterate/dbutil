@@ -5,6 +5,7 @@ package pgutil_test
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"testing"
 
 	"pkg.iterate.no/pgutil"
@@ -35,6 +36,26 @@ var migrationB = pgutil.Migration(func(ctx context.Context, tx *sql.Tx) error {
 func TestMigrate(t *testing.T) {
 	dbtest.WithDB(t, func(t *dbtest.TDB) {
 		if err := pgutil.Migrate(context.Background(), t.DB, migrationA, migrationB); err != nil {
+			t.Errorf("could not migrate: %v", err)
+		}
+	})
+}
+
+//go:embed testdata/migrations_in_dir/*.sql
+var msdir embed.FS
+
+func TestMigrateDir(t *testing.T) {
+	dbtest.WithDB(t, func(t *dbtest.TDB) {
+		ms, err := pgutil.MigrationsInDir(msdir, "testdata/migrations_in_dir")
+		if err != nil {
+			t.Errorf("failed to get migrations: %v", err)
+			return
+		}
+		if len(ms) != 1 {
+			t.Errorf("invalid number of migrations; want %d, got %d", 1, len(ms))
+			return
+		}
+		if err := pgutil.Migrate(context.Background(), t.DB, ms...); err != nil {
 			t.Errorf("could not migrate: %v", err)
 		}
 	})
