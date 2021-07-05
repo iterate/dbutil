@@ -51,8 +51,8 @@ func TestMigrateDir(t *testing.T) {
 			t.Errorf("failed to get migrations: %v", err)
 			return
 		}
-		if len(ms) != 1 {
-			t.Errorf("invalid number of migrations; want %d, got %d", 1, len(ms))
+		if len(ms) != 2 {
+			t.Errorf("invalid number of migrations; want %d, got %d", 2, len(ms))
 			return
 		}
 		if err := pgutil.Migrate(context.Background(), t.DB, ms...); err != nil {
