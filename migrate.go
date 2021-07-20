@@ -1,9 +1,13 @@
 package pgutil
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
+	"io/fs"
+	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -81,4 +85,71 @@ func Done(ctx context.Context, tx *sql.Tx, name string) error {
 		return err
 	}
 	return nil
+}
+
+func MigrationsInDir(fsys fs.ReadDirFS, dirname string) ([]Migration, error) {
+	ds, err := fsys.ReadDir(dirname)
+	if err != nil {
+		return nil, err
+	}
+
+	// sort alphabetically
+	sort.Slice(ds, func(i, j int) bool {
+		return ds[i].Name() < ds[j].Name()
+	})
+
+	var files []fs.DirEntry
+	for _, f := range ds {
+		if !f.IsDir() {
+			files = append(files, f)
+		}
+	}
+
+	var ms []Migration
+
+	for _, fi := range files {
+		pathname := filepath.Join(dirname, fi.Name())
+		ms = append(ms, migrationFromFile(fsys, pathname))
+	}
+
+	return ms, nil
+}
+
+// migrationFromFile creates a Migration from a file in an fs.FS.
+func migrationFromFile(fsys fs.FS, pathname string) Migration {
+	return func(ctx context.Context, tx *sql.Tx) error {
+		f, err := fsys.Open(pathname)
+		if err != nil {
+			return fmt.Errorf("opening migration: %w", err)
+		}
+
+		defer f.Close()
+
+		// grab filename
+		s, err := f.Stat()
+		if err != nil {
+			return fmt.Errorf("failed to stat file: %w", err)
+		}
+		n := s.Name()
+
+		if ok, err := IsMigrated(ctx, tx, n); err != nil {
+			return fmt.Errorf("checking migration state: %w", err)
+		} else if ok {
+			return nil
+		}
+
+		// read the migration to memory
+		var c bytes.Buffer
+		if _, err := c.ReadFrom(f); err != nil {
+			return fmt.Errorf("reading file: %w", err)
+		}
+
+		// do stuff with tx
+		if _, err := tx.ExecContext(ctx, c.String()); err != nil {
+			return err
+		}
+
+		// Flag this migration as executed
+		return Done(ctx, tx, n)
+	}
 }
