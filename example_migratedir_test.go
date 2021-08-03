@@ -14,7 +14,7 @@ var migrationFS embed.FS
 var db *sql.DB
 
 func ExampleMigrationsInDir() {
-	ms, err := pgutil.MigrationsInDir(migrationFS, "testdata/migrations_in_dir/*.sql")
+	ms, err := pgutil.MigrationsInDir(migrationFS, "testdata/migrations_in_dir")
 	if err != nil {
 		log.Fatalf("reading migrations: %v", err)
 	}
