@@ -21,7 +21,7 @@ const lockKey = 3628
 // back.
 type Migration func(context.Context, *sql.Tx) error
 
-var migrationName = regexp.MustCompile(`(?i)^[ \t]*--[ \t]*migration name:\s*(\w+(?: *[\w]+)*)\s*$`)
+var migrationName = regexp.MustCompile(`(?i)^[\t ]*-- Migration name: (\w+)$`)
 
 // Migrate migrates the database to the current version.
 func Migrate(ctx context.Context, db *sql.DB, ms ...Migration) error {
