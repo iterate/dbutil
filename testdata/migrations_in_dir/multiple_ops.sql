@@ -1,3 +1,5 @@
+-- Migration name: custom_migration_name
+
 CREATE TABLE my_table
 (
     id        UUID PRIMARY KEY,

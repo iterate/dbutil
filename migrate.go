@@ -1,12 +1,15 @@
 package pgutil
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"io/fs"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"time"
 )
@@ -17,6 +20,8 @@ const lockKey = 3628
 // Migration is a database migration. If it returns err, the transaction rolls
 // back.
 type Migration func(context.Context, *sql.Tx) error
+
+var migrationName = regexp.MustCompile(`(?i)^[\t ]*-- Migration name: (\w+)$`)
 
 // Migrate migrates the database to the current version.
 func Migrate(ctx context.Context, db *sql.DB, ms ...Migration) error {
@@ -115,22 +120,58 @@ func MigrationsInDir(fsys fs.ReadDirFS, dirname string) ([]Migration, error) {
 	return ms, nil
 }
 
+// getMigrationName attempts to determine the name of the migration.
+func getMigrationName(fsys fs.FS, pathname string) (string, error) {
+	// scan for a migration name
+	f, err := fsys.Open(pathname)
+	if err != nil {
+		return pathname, err
+	}
+	if n := matchMigrationName(f); n != "" {
+		return n, nil
+	}
+	defer f.Close()
+
+	// grab filename
+	s, err := f.Stat()
+	if err != nil {
+		return "", fmt.Errorf("failed to stat file: %w", err)
+	}
+	n := s.Name()
+
+	return n, nil
+}
+
+// matchMigrationName attempts to find a migration name in the migration file.
+func matchMigrationName(f io.Reader) string {
+	b := bufio.NewScanner(f)
+
+	for b.Scan() {
+		bs := b.Bytes()
+		locs := migrationName.FindSubmatchIndex(bs)
+		if len(locs) == 4 {
+			n := bs[locs[2]:locs[3]]
+			return string(n)
+		}
+	}
+
+	return ""
+}
+
 // migrationFromFile creates a Migration from a file in an fs.FS.
 func migrationFromFile(fsys fs.FS, pathname string) Migration {
 	return func(ctx context.Context, tx *sql.Tx) error {
+		n, err := getMigrationName(fsys, pathname)
+		if err != nil {
+			return fmt.Errorf("could not read migration name: %v", err)
+		}
+
 		f, err := fsys.Open(pathname)
 		if err != nil {
 			return fmt.Errorf("opening migration: %w", err)
 		}
 
 		defer f.Close()
-
-		// grab filename
-		s, err := f.Stat()
-		if err != nil {
-			return fmt.Errorf("failed to stat file: %w", err)
-		}
-		n := s.Name()
 
 		if ok, err := IsMigrated(ctx, tx, n); err != nil {
 			return fmt.Errorf("checking migration state: %w", err)
