@@ -47,6 +47,14 @@ Ok. See [example_migratedir_test.go](example_migratedir_test.go).
 ms, err := pgutil.MigrationsInDir(fsys, "path/to/migrations")
 ```
 
+To name a migration filr, add a comment anywhere in the file like this:
+
+```postgresql
+-- Migration name: custom_migration_name
+```
+
+Migrations are still executed in filename order.
+
 ## Utilities
 
 ### Transaction
