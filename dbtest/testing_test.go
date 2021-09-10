@@ -1,4 +1,5 @@
-//+build withdb
+//go:build withdb
+// +build withdb
 
 package dbtest_test
 
@@ -22,3 +23,10 @@ func TestCanConnectToDatabase(t *testing.T) {
 	})
 }
 
+func TestUUIDIsEnabled(t *testing.T) {
+	dbtest.WithDB(t, func(t *dbtest.TDB) {
+		if _, err := t.DB.Exec("CREATE TABLE test_table ( id uuid PRIMARY KEY DEFAULT uuid_generate_v4() )"); err != nil {
+			t.Errorf("failed to query database: %v", err)
+		}
+	})
+}
