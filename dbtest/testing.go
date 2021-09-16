@@ -2,11 +2,13 @@
 package dbtest
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,14 +19,31 @@ import (
 )
 
 var pool *dockertest.Pool
+var poolCfg *dbCfg
+
+type dbCfg struct {
+	init       [][]byte
+	image, tag string
+}
+
+type DBConfigFn func(c *dbCfg)
 
 // WithPool makes sure we have a valid database pool. You should wrap your TestMain invocation with this.
 //
 //    func TestMain(m *testing.M) {
 //        os.Exit(withPool(m.Run))
 //    }
-func WithPool(f func() int) int {
+func WithPool(f func() int, opts ...DBConfigFn) int {
 	var p *dockertest.Pool
+	if poolCfg == nil {
+		poolCfg = &dbCfg{
+			image: "postgres",
+			tag:   "13-alpine",
+		}
+	}
+	for i := range opts {
+		opts[i](poolCfg)
+	}
 
 	log.Println("creating test database")
 
@@ -78,6 +97,14 @@ func WithDB(t *testing.T, f func(*TDB)) {
 		pool.Purge(r)
 	}()
 
+	for i := range poolCfg.init {
+		var b bytes.Buffer
+		b.Write(poolCfg.init[i])
+		if _, err := db.Exec(b.String()); err != nil {
+			t.Errorf("could not execute init script: %v", err)
+		}
+	}
+
 	f(&TDB{
 		T:  t,
 		DB: db,
@@ -95,7 +122,7 @@ func makeDB(t testing.TB, p *dockertest.Pool) (*sql.DB, *dockertest.Resource, er
 		fmt.Sprintf("POSTGRES_PASSWORD=%s", pwd),
 	}
 
-	r, err := p.Run("postgres", "13-alpine", vars)
+	r, err := p.Run(poolCfg.image, poolCfg.tag, vars)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not start resource: %v", err)
 	}
@@ -112,8 +139,30 @@ func makeDB(t testing.TB, p *dockertest.Pool) (*sql.DB, *dockertest.Resource, er
 	defer ccl()
 
 	if err := pgutil.Wait(ctx, db); err != nil {
-			return nil, nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
 
 	return db, r, nil
+}
+
+func WithImage(img string) DBConfigFn {
+	return func(c *dbCfg) {
+		ps := strings.Split(img, ":")
+		switch len(ps) {
+		case 1:
+			c.image = ps[0]
+			c.tag = "latest"
+		case 2:
+			c.image = ps[0]
+			c.tag = ps[1]
+		default:
+			panic(fmt.Sprintf("invalid format, must be %q or %q", "image", "image:tag"))
+		}
+	}
+}
+
+func WithInit(b []byte) DBConfigFn {
+	return func(c *dbCfg) {
+		c.init = append(c.init, b)
+	}
 }

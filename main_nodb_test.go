@@ -1,4 +1,5 @@
-//+build !withdb
+//go:build !withdb
+// +build !withdb
 
 package pgutil_test
 
