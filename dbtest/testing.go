@@ -56,12 +56,14 @@ func WithPool(f func() int, opts ...DBConfigFn) int {
 	pool = p
 
 	for _, f := range poolCfg.withGlobal {
-		db, r, err := makeDB(p)
+		db, r, err := makeDB(p, poolCfg)
+		if r != nil {
+			globalDBs = append(globalDBs, r)
+		}
 		if err != nil {
 			log.Printf("making global database: %v", err)
 			return 1
 		}
-		globalDBs = append(globalDBs, r)
 		if err := f(db); err != nil {
 			log.Printf("making global database: %v", err)
 			return 1
@@ -112,21 +114,15 @@ func WithDB(t *testing.T, f func(*TDB)) {
 	if pool == nil {
 		t.Fatalf("pool not configured")
 	}
-	db, r, err := makeDB(pool)
+	db, r, err := makeDB(pool, poolCfg)
+	if r != nil {
+		defer func() {
+			pool.Purge(r)
+		}()
+	}
 	if err != nil {
 		t.Errorf("could not create testing database: %v", err)
 		return
-	}
-	defer func() {
-		pool.Purge(r)
-	}()
-
-	for i := range poolCfg.init {
-		var b bytes.Buffer
-		b.Write(poolCfg.init[i])
-		if _, err := db.Exec(b.String()); err != nil {
-			t.Errorf("could not execute init script: %v", err)
-		}
 	}
 
 	f(&TDB{
@@ -136,7 +132,7 @@ func WithDB(t *testing.T, f func(*TDB)) {
 }
 
 // makeDb creates a temporary database.
-func makeDB(p *dockertest.Pool) (*sql.DB, *dockertest.Resource, error) {
+func makeDB(pool *dockertest.Pool, cfg *dbCfg) (*sql.DB, *dockertest.Resource, error) {
 	pwd := "pgtest"
 	dbn := dbname()
 
@@ -146,7 +142,7 @@ func makeDB(p *dockertest.Pool) (*sql.DB, *dockertest.Resource, error) {
 		fmt.Sprintf("POSTGRES_PASSWORD=%s", pwd),
 	}
 
-	r, err := p.Run(poolCfg.image, poolCfg.tag, vars)
+	r, err := pool.Run(poolCfg.image, poolCfg.tag, vars)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not start resource: %v", err)
 	}
@@ -164,6 +160,14 @@ func makeDB(p *dockertest.Pool) (*sql.DB, *dockertest.Resource, error) {
 
 	if err := pgutil.Wait(ctx, db); err != nil {
 		return nil, nil, ctx.Err()
+	}
+
+	for i := range poolCfg.init {
+		var b bytes.Buffer
+		b.Write(poolCfg.init[i])
+		if _, err := db.Exec(b.String()); err != nil {
+			return nil, r, fmt.Errorf("could not execute init script: %v", err)
+		}
 	}
 
 	return db, r, nil
