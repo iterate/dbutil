@@ -20,6 +20,7 @@ import (
 
 var pool *dockertest.Pool
 var poolCfg *dbCfg
+var globalDBs []*dockertest.Resource
 
 type dbCfg struct {
 	init       [][]byte
@@ -55,26 +56,29 @@ func WithPool(f func() int, opts ...DBConfigFn) int {
 	pool = p
 
 	for _, f := range poolCfg.withGlobal {
-		if db, err := makeGlobal(); err != nil {
+		db, r, err := makeDB(p)
+		if err != nil {
 			log.Printf("making global database: %v", err)
 			return 1
-		} else {
-			if err := f(db); err != nil {
-				log.Printf("making global database: %v", err)
-				return 1
-			}
+		}
+		globalDBs = append(globalDBs, r)
+		if err := f(db); err != nil {
+			log.Printf("making global database: %v", err)
+			return 1
 		}
 	}
+
+	defer cleanDatabases()
 
 	return f()
 }
 
-func makeGlobal() (*sql.DB, error) {
-	db, _, err := makeDB(pool)
-	if err != nil {
-		return nil, fmt.Errorf("could not create testing database: %v", err)
+func cleanDatabases() {
+	for _, r := range globalDBs {
+		if err := pool.Purge(r); err != nil {
+			log.Printf("purging resource: %v", err)
+		}
 	}
-	return db, nil
 }
 
 func dbname() string {
