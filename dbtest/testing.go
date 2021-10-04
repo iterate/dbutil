@@ -24,6 +24,7 @@ var poolCfg *dbCfg
 type dbCfg struct {
 	init       [][]byte
 	image, tag string
+	withGlobal []func(db *sql.DB) error
 }
 
 type DBConfigFn func(c *dbCfg)
@@ -52,7 +53,28 @@ func WithPool(f func() int, opts ...DBConfigFn) int {
 		log.Fatalf("could not connect to docker: %v", err)
 	}
 	pool = p
+
+	for _, f := range poolCfg.withGlobal {
+		if db, err := makeGlobal(); err != nil {
+			log.Printf("making global database: %v", err)
+			return 1
+		} else {
+			if err := f(db); err != nil {
+				log.Printf("making global database: %v", err)
+				return 1
+			}
+		}
+	}
+
 	return f()
+}
+
+func makeGlobal() (*sql.DB, error) {
+	db, _, err := makeDB(pool)
+	if err != nil {
+		return nil, fmt.Errorf("could not create testing database: %v", err)
+	}
+	return db, nil
 }
 
 func dbname() string {
@@ -83,12 +105,10 @@ func RunWithDB(t *testing.T, name string, f func(*TDB)) {
 //        })
 //    }
 func WithDB(t *testing.T, f func(*TDB)) {
-	n := dbname()
-	t.Logf("creating database %s", n)
 	if pool == nil {
 		t.Fatalf("pool not configured")
 	}
-	db, r, err := makeDB(t, pool)
+	db, r, err := makeDB(pool)
 	if err != nil {
 		t.Errorf("could not create testing database: %v", err)
 		return
@@ -112,7 +132,7 @@ func WithDB(t *testing.T, f func(*TDB)) {
 }
 
 // makeDb creates a temporary database.
-func makeDB(t testing.TB, p *dockertest.Pool) (*sql.DB, *dockertest.Resource, error) {
+func makeDB(p *dockertest.Pool) (*sql.DB, *dockertest.Resource, error) {
 	pwd := "pgtest"
 	dbn := dbname()
 
@@ -164,5 +184,11 @@ func WithImage(img string) DBConfigFn {
 func WithInit(b []byte) DBConfigFn {
 	return func(c *dbCfg) {
 		c.init = append(c.init, b)
+	}
+}
+
+func WithGlobal(f func(*sql.DB) error) DBConfigFn {
+	return func(c *dbCfg) {
+		c.withGlobal = append(c.withGlobal, f)
 	}
 }

@@ -4,6 +4,7 @@
 package dbtest_test
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 
@@ -11,15 +12,8 @@ import (
 )
 
 func TestCanConnectToDatabase(t *testing.T) {
-	dbtest.WithDB(t, func(t *dbtest.TDB) {
-		var v string
-		if err := t.DB.QueryRow("SELECT version();").Scan(&v); err != nil {
-			t.Errorf("failed to query database: %v", err)
-		}
-		l := strings.ToLower(v)
-		if !strings.Contains(l, "postgresql") {
-			t.Errorf("expected something containing %q, got %q", "postgresql", v)
-		}
+	dbtest.WithDB(t, func(tdb *dbtest.TDB) {
+		ping(t, tdb.DB)
 	})
 }
 
@@ -29,4 +23,21 @@ func TestUUIDIsEnabled(t *testing.T) {
 			t.Errorf("failed to query database: %v", err)
 		}
 	})
+}
+
+func TestGlobalDBIsAvailable(t *testing.T) {
+	ping(t, globalDb)
+}
+
+func ping(t *testing.T, db interface {
+	QueryRow(string, ...interface{}) *sql.Row
+}) {
+	var v string
+	if err := db.QueryRow("SELECT version();").Scan(&v); err != nil {
+		t.Errorf("failed to query database: %v", err)
+	}
+	l := strings.ToLower(v)
+	if !strings.Contains(l, "postgresql") {
+		t.Errorf("expected something containing %q, got %q", "postgresql", v)
+	}
 }
