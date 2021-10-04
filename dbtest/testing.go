@@ -20,10 +20,12 @@ import (
 
 var pool *dockertest.Pool
 var poolCfg *dbCfg
+var globalDBs []*dockertest.Resource
 
 type dbCfg struct {
 	init       [][]byte
 	image, tag string
+	withGlobal []func(db *sql.DB) error
 }
 
 type DBConfigFn func(c *dbCfg)
@@ -52,7 +54,33 @@ func WithPool(f func() int, opts ...DBConfigFn) int {
 		log.Fatalf("could not connect to docker: %v", err)
 	}
 	pool = p
+
+	for _, f := range poolCfg.withGlobal {
+		db, r, err := makeDB(p, poolCfg)
+		if r != nil {
+			globalDBs = append(globalDBs, r)
+		}
+		if err != nil {
+			log.Printf("making global database: %v", err)
+			return 1
+		}
+		if err := f(db); err != nil {
+			log.Printf("making global database: %v", err)
+			return 1
+		}
+	}
+
+	defer cleanDatabases()
+
 	return f()
+}
+
+func cleanDatabases() {
+	for _, r := range globalDBs {
+		if err := pool.Purge(r); err != nil {
+			log.Printf("purging resource: %v", err)
+		}
+	}
 }
 
 func dbname() string {
@@ -83,26 +111,18 @@ func RunWithDB(t *testing.T, name string, f func(*TDB)) {
 //        })
 //    }
 func WithDB(t *testing.T, f func(*TDB)) {
-	n := dbname()
-	t.Logf("creating database %s", n)
 	if pool == nil {
 		t.Fatalf("pool not configured")
 	}
-	db, r, err := makeDB(t, pool)
+	db, r, err := makeDB(pool, poolCfg)
+	if r != nil {
+		defer func() {
+			pool.Purge(r)
+		}()
+	}
 	if err != nil {
 		t.Errorf("could not create testing database: %v", err)
 		return
-	}
-	defer func() {
-		pool.Purge(r)
-	}()
-
-	for i := range poolCfg.init {
-		var b bytes.Buffer
-		b.Write(poolCfg.init[i])
-		if _, err := db.Exec(b.String()); err != nil {
-			t.Errorf("could not execute init script: %v", err)
-		}
 	}
 
 	f(&TDB{
@@ -112,7 +132,7 @@ func WithDB(t *testing.T, f func(*TDB)) {
 }
 
 // makeDb creates a temporary database.
-func makeDB(t testing.TB, p *dockertest.Pool) (*sql.DB, *dockertest.Resource, error) {
+func makeDB(pool *dockertest.Pool, cfg *dbCfg) (*sql.DB, *dockertest.Resource, error) {
 	pwd := "pgtest"
 	dbn := dbname()
 
@@ -122,7 +142,7 @@ func makeDB(t testing.TB, p *dockertest.Pool) (*sql.DB, *dockertest.Resource, er
 		fmt.Sprintf("POSTGRES_PASSWORD=%s", pwd),
 	}
 
-	r, err := p.Run(poolCfg.image, poolCfg.tag, vars)
+	r, err := pool.Run(poolCfg.image, poolCfg.tag, vars)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not start resource: %v", err)
 	}
@@ -140,6 +160,14 @@ func makeDB(t testing.TB, p *dockertest.Pool) (*sql.DB, *dockertest.Resource, er
 
 	if err := pgutil.Wait(ctx, db); err != nil {
 		return nil, nil, ctx.Err()
+	}
+
+	for i := range poolCfg.init {
+		var b bytes.Buffer
+		b.Write(poolCfg.init[i])
+		if _, err := db.Exec(b.String()); err != nil {
+			return nil, r, fmt.Errorf("could not execute init script: %v", err)
+		}
 	}
 
 	return db, r, nil
@@ -164,5 +192,11 @@ func WithImage(img string) DBConfigFn {
 func WithInit(b []byte) DBConfigFn {
 	return func(c *dbCfg) {
 		c.init = append(c.init, b)
+	}
+}
+
+func WithGlobal(f func(*sql.DB) error) DBConfigFn {
+	return func(c *dbCfg) {
+		c.withGlobal = append(c.withGlobal, f)
 	}
 }
