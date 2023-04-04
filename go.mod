@@ -5,7 +5,7 @@ go 1.16
 require (
 	github.com/cenkalti/backoff/v4 v4.1.1
 	github.com/containerd/continuity v0.2.0 // indirect
-	github.com/docker/docker v20.10.8+incompatible // indirect
+	github.com/docker/docker v20.10.24+incompatible // indirect
 	github.com/jackc/pgx/v4 v4.11.0
 	github.com/mitchellh/mapstructure v1.4.2 // indirect
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
